@@ -312,7 +312,7 @@ pipeline {
             agent { label "jenkins-agent-zap" }
             steps {
             sh '''
-                /zap/zap-baseline.py -r index.html -t https://pet-battle-${TEAM_NAME}-test.apps.cluster-ndfxh.ndfxh.sandbox1204.opentlc.com || return_code=$?
+                /zap/zap-baseline.py -r index.html -t https://pet-battle-${TEAM_NAME}-test.apps.tl500-cwl.ls-ap.ole.redhat.com || return_code=$?
                 echo "exit value was  - " $return_code
             ''' }
             post {
@@ -329,7 +329,21 @@ pipeline {
         } }
 
 
+
 		// 🏋🏻‍♀️ LOAD TESTING EXAMPLE GOES HERE
+        stage("🏋🏻‍♀️ Load Testing") {
+            agent { label "jenkins-agent-python" }
+            steps {
+                script {
+                    sh '''
+                    pip3 install locust
+                    locust --headless --users 10 --spawn-rate 1 -H https://${APP_NAME}-${DESTINATION_NAMESPACE}.apps.tl500-cwl.ls-ap.ole.redhat.com --run-time 1m --loglevel INFO --only-summary
+                    '''
+                }
+            }
+        }
+
+
 
 		// stage("🥾 Trigger System Tests") {
 		// 	options {
