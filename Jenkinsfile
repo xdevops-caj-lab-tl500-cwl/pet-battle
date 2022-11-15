@@ -366,6 +366,53 @@ pipeline {
 		// }
 
 		// 💥🔨 BLUE / GREEN DEPLOYMENT GOES HERE 
+        stage("🔷✅ Blue Green Deploy") {
+            agent {
+                label "jenkins-agent-argocd"
+            }
+            steps {
+                echo '### set env to test against ###'
+                sh '''
+                #🌻 1. Get the current active / inactive
+                export INACTIVE=$(oc get svc -l blue_green=inactive --no-headers -n ${DESTINATION_NAMESPACE} | cut -d' ' -f 1)
+                export ACTIVE=$(oc get svc -l blue_green=active --no-headers -n ${DESTINATION_NAMESPACE} | cut -d' ' -f 1)
+
+                #🌻 2. Deploy the new changes to hte current `inactive`
+                printenv
+                git clone https://${GIT_CREDS}@${ARGOCD_CONFIG_REPO} config-repo
+                cd config-repo
+                git checkout ${ARGOCD_CONFIG_REPO_BRANCH} # master or main
+                yq eval -i .applications.\\"${INACTIVE}\\".source_ref=\\"${CHART_VERSION}\\" "${ARGOCD_CONFIG_REPO_PATH}"
+                yq eval -i .applications.\\"${INACTIVE}\\".values.image_version=\\"${VERSION}\\" "${ARGOCD_CONFIG_REPO_PATH}"
+                # Commit the changes :P
+                git config --global user.email "jenkins@rht-labs.bot.com"
+                git config --global user.name "Jenkins"
+                git config --global push.default simple
+                git add ${ARGOCD_CONFIG_REPO_PATH}
+                git commit -m "🚀 AUTOMATED COMMIT - Deployment of ${APP_NAME} at version ${VERSION} 🚀" || rc1=$?
+                git remote set-url origin  https://${GIT_CREDS}@${ARGOCD_CONFIG_REPO}
+                git push -u origin ${ARGOCD_CONFIG_REPO_BRANCH}
+
+                #🌻 3. do some kind of verification of the deployment  
+                sleep 10
+                echo "🪞💨 TODO - some kinda test to validate blue or green is working as expected ... 🪞💨"
+                curl -L -f $(oc get route --no-headers ${INACTIVE//_/-} -n $DESTINATION_NAMESPACE | cut -d' ' -f 4) 
+
+                #🌻 4. If "tests" have passed swap inactive to active to and vice versa
+                yq eval -i .applications.\\"${INACTIVE}\\".values.blue_green=\\"active\\" "${ARGOCD_CONFIG_REPO_PATH}"
+                yq eval -i .applications.\\"${ACTIVE}\\".values.blue_green=\\"inactive\\" "${ARGOCD_CONFIG_REPO_PATH}"
+
+                #🌻 5. update the 'prod' route to point to the new active svc
+                export NEW_ACTIVE=${INACTIVE//_/-}
+                echo "🐥 - ${NEW_ACTIVE}"
+                yq eval -i .applications.blue-pet-battle.values.prod_route_svc_name=\\"${NEW_ACTIVE}\\" "${ARGOCD_CONFIG_REPO_PATH}"
+                git add ${ARGOCD_CONFIG_REPO_PATH}
+                git commit -m "🚀 AUTOMATED COMMIT - Deployment of ${APP_NAME} at version ${VERSION} 🚀" || rc1=$?
+                git remote set-url origin  https://${GIT_CREDS}@${ARGOCD_CONFIG_REPO}
+                git push -u origin ${ARGOCD_CONFIG_REPO_BRANCH}
+                '''
+            }
+        }
 
 	}
 }
